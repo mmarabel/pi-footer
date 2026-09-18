@@ -71,6 +71,8 @@ function truncateMiddleWithStyledEllipsis(text: string, maxWidth: number): strin
 function compactLocationEntries(
   entries: readonly RenderedSegment[],
   data: StatuslineData,
+  maxWidth: number,
+  settings: StatuslineSettings,
 ): RenderedSegment[] {
   const cwdIndex = entries.findIndex((entry) => entry.widget.type === "cwd-basename");
   const branchIndex = entries.findIndex((entry) => entry.widget.type === "git-branch");
@@ -85,17 +87,35 @@ function compactLocationEntries(
   const branch = data.git.branch ?? "";
   const duplicatesCwd = branch === cwdName || branch.endsWith(`/${cwdName}`);
 
-  cwdEntry.segment = truncateMiddleWithStyledEllipsis(cwdEntry.segment, COMPACT_CWD_WIDTH);
   if (duplicatesCwd) {
     branchEntry.segment = "";
     const previous = compacted[branchIndex - 1];
     if (previous?.widget.type === "separator") previous.segment = "";
-  } else {
-    branchEntry.segment = truncateMiddleWithStyledEllipsis(
-      branchEntry.segment,
-      COMPACT_BRANCH_WIDTH,
+    cwdEntry.segment = truncateMiddleWithStyledEllipsis(
+      cwdEntry.segment,
+      Math.min(COMPACT_CWD_WIDTH, maxWidth),
     );
+    return compacted;
   }
+
+  const desiredCwdWidth = Math.min(visibleWidth(cwdEntry.segment), COMPACT_CWD_WIDTH);
+  const desiredBranchWidth = Math.min(visibleWidth(branchEntry.segment), COMPACT_BRANCH_WIDTH);
+  const withoutLocations = compacted.map((entry, index) =>
+    index === cwdIndex || index === branchIndex ? { ...entry, segment: "" } : entry,
+  );
+  const locationBudget = Math.max(
+    2,
+    maxWidth - visibleWidth(joinSegments(withoutLocations, settings)),
+  );
+  const desiredTotal = desiredCwdWidth + desiredBranchWidth;
+  const cwdWidth =
+    desiredTotal <= locationBudget
+      ? desiredCwdWidth
+      : Math.max(1, Math.floor((locationBudget * desiredCwdWidth) / desiredTotal));
+  const branchWidth = Math.max(1, Math.min(desiredBranchWidth, locationBudget - cwdWidth));
+
+  cwdEntry.segment = truncateMiddleWithStyledEllipsis(cwdEntry.segment, cwdWidth);
+  branchEntry.segment = truncateMiddleWithStyledEllipsis(branchEntry.segment, branchWidth);
   return compacted;
 }
 
@@ -152,7 +172,8 @@ function renderLine(
   const right = joinSegments(rendered.slice(flexIndex + 1), settings);
   let left = joinSegments(leftEntries, settings);
   if (right && visibleWidth(left) + MIN_FLEX_GAP + visibleWidth(right) > width) {
-    leftEntries = compactLocationEntries(leftEntries, ctx.data);
+    const leftWidth = Math.max(0, width - visibleWidth(right) - MIN_FLEX_GAP);
+    leftEntries = compactLocationEntries(leftEntries, ctx.data, leftWidth, settings);
     left = joinSegments(leftEntries, settings);
   }
   return right ? padRight(left, right, width) : truncateToWidth(left, width, "…");
