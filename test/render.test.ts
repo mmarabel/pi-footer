@@ -553,6 +553,102 @@ describe("renderStatusline", () => {
     expect(stripAnsi(line)).toBe(`short${" ".repeat(14)}model`);
   });
 
+  it("collapses a long branch that duplicates the cwd basename", () => {
+    const locationData: StatuslineData = {
+      ...data,
+      cwd: "/tmp/bug-new-worktree-card-style-makes-completed-but",
+      git: {
+        ...data.git,
+        branch: "mmarabel/bug-new-worktree-card-style-makes-completed-but",
+      },
+    };
+    const line = renderStatusline(
+      {
+        ...plainConfig,
+        separator: "none",
+        lines: [
+          [
+            registry.createEntry("cwd-basename", { icon: "~ " }),
+            registry.createEntry("separator", { separator: "custom", text: " · " }),
+            registry.createEntry("git-branch", { icon: "git " }),
+            registry.createEntry("flex-separator"),
+            registry.createEntry("custom-text", { raw: true, text: "model · high" }),
+          ],
+        ],
+      },
+      locationData,
+      80,
+    );
+
+    const plain = stripAnsi(line);
+    expect(plain).not.toContain("mmarabel");
+    expect(plain).not.toContain("git ");
+    expect(plain).toMatch(/^~ bug-new-work.*….*completed-but {4,}model · high$/);
+  });
+
+  it("independently middle-truncates distinct cwd and branch names under pressure", () => {
+    const locationData: StatuslineData = {
+      ...data,
+      cwd: "/tmp/bug-new-worktree-card-style-makes-completed-but",
+      git: {
+        ...data.git,
+        branch: "mmarabel/feature-with-a-different-and-very-long-name",
+      },
+    };
+    const line = renderStatusline(
+      {
+        ...plainConfig,
+        separator: "none",
+        lines: [
+          [
+            registry.createEntry("cwd-basename", { icon: "~ " }),
+            registry.createEntry("separator", { separator: "custom", text: " · " }),
+            registry.createEntry("git-branch", { icon: "git " }),
+            registry.createEntry("flex-separator"),
+            registry.createEntry("custom-text", { raw: true, text: "model · high" }),
+          ],
+        ],
+      },
+      locationData,
+      96,
+    );
+
+    const plain = stripAnsi(line);
+    expect(plain.split("…")).toHaveLength(3);
+    expect(plain).toContain("~ bug-new-work");
+    expect(plain).toContain("git mmarabel/feature");
+    expect(plain).toMatch(/ {4}model · high$/);
+  });
+
+  it("keeps short cwd and branch fields unchanged", () => {
+    const locationData: StatuslineData = {
+      ...data,
+      cwd: "/tmp/hetzner-vps",
+      git: { ...data.git, branch: "main" },
+    };
+    const line = renderStatusline(
+      {
+        ...plainConfig,
+        separator: "none",
+        lines: [
+          [
+            registry.createEntry("cwd-basename", { icon: "~ " }),
+            registry.createEntry("separator", { separator: "custom", text: " · " }),
+            registry.createEntry("git-branch", { icon: "git " }),
+            registry.createEntry("flex-separator"),
+            registry.createEntry("custom-text", { raw: true, text: "model · high" }),
+          ],
+        ],
+      },
+      locationData,
+      80,
+    );
+
+    const plain = stripAnsi(line);
+    expect(plain.startsWith("~ hetzner-vps · git main")).toBe(true);
+    expect(plain).not.toContain("…");
+  });
+
   it("uses the whole width for an oversized right side of a flex layout", () => {
     const line = renderStatusline(
       {

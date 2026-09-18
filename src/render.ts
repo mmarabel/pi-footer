@@ -1,5 +1,6 @@
 import type { Theme } from "@earendil-works/pi-coding-agent";
-import { truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
+import { sliceByColumn, truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
+import { basename } from "node:path";
 
 import { applyColors } from "./colors.js";
 import type { GetExtensionStatuses } from "./extension-statuses.js";
@@ -40,6 +41,8 @@ export function renderStatuslines(
 
 const ANSI_RESET = "\x1b[0m";
 const MIN_FLEX_GAP = 4;
+const COMPACT_CWD_WIDTH = 36;
+const COMPACT_BRANCH_WIDTH = 40;
 
 function truncateWithStyledEllipsis(text: string, maxWidth: number): string {
   if (visibleWidth(text) <= maxWidth) return text;
@@ -50,6 +53,50 @@ function truncateWithStyledEllipsis(text: string, maxWidth: number): string {
   const prefix = truncateToWidth(text, maxWidth - 1, "");
   const styledPrefix = prefix.endsWith(ANSI_RESET) ? prefix.slice(0, -ANSI_RESET.length) : prefix;
   return `${styledPrefix}…${ANSI_RESET}`;
+}
+
+function truncateMiddleWithStyledEllipsis(text: string, maxWidth: number): string {
+  const textWidth = visibleWidth(text);
+  if (textWidth <= maxWidth) return text;
+  if (maxWidth <= 1) return truncateToWidth(text, maxWidth, "…");
+
+  const contentWidth = maxWidth - 1;
+  const headWidth = Math.ceil(contentWidth / 2);
+  const tailWidth = Math.floor(contentWidth / 2);
+  const head = sliceByColumn(text, 0, headWidth, true);
+  const tail = sliceByColumn(text, textWidth - tailWidth, tailWidth, true);
+  return `${head}…${tail}`;
+}
+
+function compactLocationEntries(
+  entries: readonly RenderedSegment[],
+  data: StatuslineData,
+): RenderedSegment[] {
+  const cwdIndex = entries.findIndex((entry) => entry.widget.type === "cwd-basename");
+  const branchIndex = entries.findIndex((entry) => entry.widget.type === "git-branch");
+  if (cwdIndex === -1 || branchIndex === -1) return [...entries];
+
+  const compacted = entries.map((entry) => ({ ...entry }));
+  const cwdEntry = compacted[cwdIndex];
+  const branchEntry = compacted[branchIndex];
+  if (!cwdEntry || !branchEntry) return compacted;
+
+  const cwdName = basename(data.cwd);
+  const branch = data.git.branch ?? "";
+  const duplicatesCwd = branch === cwdName || branch.endsWith(`/${cwdName}`);
+
+  cwdEntry.segment = truncateMiddleWithStyledEllipsis(cwdEntry.segment, COMPACT_CWD_WIDTH);
+  if (duplicatesCwd) {
+    branchEntry.segment = "";
+    const previous = compacted[branchIndex - 1];
+    if (previous?.widget.type === "separator") previous.segment = "";
+  } else {
+    branchEntry.segment = truncateMiddleWithStyledEllipsis(
+      branchEntry.segment,
+      COMPACT_BRANCH_WIDTH,
+    );
+  }
+  return compacted;
 }
 
 function padRight(left: string, right: string, width: number): string {
@@ -101,8 +148,13 @@ function renderLine(
     return truncateToWidth(joinSegments(rendered, settings), width, "…");
   }
 
-  const left = joinSegments(rendered.slice(0, flexIndex), settings);
+  let leftEntries = rendered.slice(0, flexIndex);
   const right = joinSegments(rendered.slice(flexIndex + 1), settings);
+  let left = joinSegments(leftEntries, settings);
+  if (right && visibleWidth(left) + MIN_FLEX_GAP + visibleWidth(right) > width) {
+    leftEntries = compactLocationEntries(leftEntries, ctx.data);
+    left = joinSegments(leftEntries, settings);
+  }
   return right ? padRight(left, right, width) : truncateToWidth(left, width, "…");
 }
 
