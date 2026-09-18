@@ -502,7 +502,55 @@ describe("renderStatusline", () => {
     const plain = stripAnsi(line);
     expect(visibleWidth(line)).toBe(80);
     expect(plain.endsWith("opencode · muse-spark-1.3-contributor-free · xhigh")).toBe(true);
-    expect(plain).toMatch(/^bug-new-worktree.*… +opencode/);
+    expect(plain).toMatch(/^bug-new-worktree.*… {4}opencode/);
+  });
+
+  it("styles a flex truncation ellipsis like the text before it", () => {
+    const line = renderStatusline(
+      {
+        ...plainConfig,
+        terminal: { ...plainConfig.terminal, colorLevel: "ansi256" },
+        separator: "none",
+        lines: [
+          [
+            registry.createEntry("custom-text", {
+              raw: true,
+              text: "long-left-side-that-needs-truncation",
+              fg: "ansi256:72",
+            }),
+            registry.createEntry("flex-separator"),
+            registry.createEntry("custom-text", { raw: true, text: "model · high" }),
+          ],
+        ],
+      },
+      data,
+      32,
+    );
+
+    expect(visibleWidth(line)).toBe(32);
+    expect(line).toContain("\x1b[38;5;72m");
+    expect(line).not.toContain("\x1b[0m…");
+    expect(line).toContain("…\x1b[0m    model · high");
+  });
+
+  it("keeps the original flex spacing when neither side needs truncation", () => {
+    const line = renderStatusline(
+      {
+        ...plainConfig,
+        separator: "none",
+        lines: [
+          [
+            registry.createEntry("custom-text", { raw: true, text: "short" }),
+            registry.createEntry("flex-separator"),
+            registry.createEntry("custom-text", { raw: true, text: "model" }),
+          ],
+        ],
+      },
+      data,
+      24,
+    );
+
+    expect(stripAnsi(line)).toBe(`short${" ".repeat(14)}model`);
   });
 
   it("uses the whole width for an oversized right side of a flex layout", () => {

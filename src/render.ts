@@ -38,14 +38,28 @@ export function renderStatuslines(
     .filter((line) => line.trim().length > 0);
 }
 
+const ANSI_RESET = "\x1b[0m";
+const MIN_FLEX_GAP = 4;
+
+function truncateWithStyledEllipsis(text: string, maxWidth: number): string {
+  if (visibleWidth(text) <= maxWidth) return text;
+  if (maxWidth <= 1) return truncateToWidth(text, maxWidth, "…");
+
+  // pi-tui intentionally resets styles before its ellipsis. Remove only that final reset
+  // so the ellipsis inherits the style active at the truncation point, then close it again.
+  const prefix = truncateToWidth(text, maxWidth - 1, "");
+  const styledPrefix = prefix.endsWith(ANSI_RESET) ? prefix.slice(0, -ANSI_RESET.length) : prefix;
+  return `${styledPrefix}…${ANSI_RESET}`;
+}
+
 function padRight(left: string, right: string, width: number): string {
   const rightWidth = visibleWidth(right);
   if (rightWidth >= width) return truncateToWidth(right, width, "…");
 
   // The right side carries high-priority state such as model and thinking level. Fit the
   // left side into the remaining columns first so a long cwd or branch cannot push that
-  // state past the terminal edge.
-  const fittedLeft = truncateToWidth(left, width - rightWidth - 1, "…");
+  // state past the terminal edge. Keep a readable gap between the two groups.
+  const fittedLeft = truncateWithStyledEllipsis(left, width - rightWidth - MIN_FLEX_GAP);
   const spaces = width - visibleWidth(fittedLeft) - rightWidth;
   return `${fittedLeft}${" ".repeat(spaces)}${right}`;
 }
