@@ -2,7 +2,7 @@ import type { Theme } from "@earendil-works/pi-coding-agent";
 import { sliceByColumn, truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
 import { basename } from "node:path";
 
-import { applyColors } from "./colors.js";
+import { applyColors, stripAnsi } from "./colors.js";
 import type { GetExtensionStatuses } from "./extension-statuses.js";
 import { separatorText } from "./separators.js";
 import type { StatuslineData, StatuslineSettings } from "./types.js";
@@ -61,10 +61,34 @@ function truncateMiddleWithStyledEllipsis(text: string, maxWidth: number): strin
   if (maxWidth <= 1) return truncateToWidth(text, maxWidth, "…");
 
   const contentWidth = maxWidth - 1;
-  const headWidth = Math.ceil(contentWidth / 2);
+  let headWidth = Math.ceil(contentWidth / 2);
   const tailWidth = Math.floor(contentWidth / 2);
+  let tailStart = textWidth - tailWidth;
+
+  // Prefer whole hyphen-delimited tokens around the cut. Falling back to the exact column
+  // budgets keeps this generic for paths and labels that do not use kebab-case names.
+  const initialHead = stripAnsi(sliceByColumn(text, 0, headWidth, true));
+  const nextCharacter = stripAnsi(sliceByColumn(text, headWidth, 1, true));
+  if (initialHead.endsWith("-")) {
+    headWidth -= 1;
+  } else if (nextCharacter !== "-") {
+    const boundary = initialHead.lastIndexOf("-");
+    if (boundary > 0) headWidth = visibleWidth(initialHead.slice(0, boundary));
+  }
+
+  const previousCharacter = stripAnsi(sliceByColumn(text, Math.max(0, tailStart - 1), 1, true));
+  const initialTail = stripAnsi(sliceByColumn(text, tailStart, tailWidth, true));
+  if (initialTail.startsWith("-")) {
+    tailStart += 1;
+  } else if (previousCharacter !== "-") {
+    const boundary = initialTail.indexOf("-");
+    if (boundary >= 0 && boundary < initialTail.length - 1) {
+      tailStart += visibleWidth(initialTail.slice(0, boundary + 1));
+    }
+  }
+
   const head = sliceByColumn(text, 0, headWidth, true);
-  const tail = sliceByColumn(text, textWidth - tailWidth, tailWidth, true);
+  const tail = sliceByColumn(text, tailStart, textWidth - tailStart, true);
   return `${head}…${tail}`;
 }
 

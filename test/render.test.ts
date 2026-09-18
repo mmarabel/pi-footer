@@ -583,7 +583,7 @@ describe("renderStatusline", () => {
     const plain = stripAnsi(line);
     expect(plain).not.toContain("mmarabel");
     expect(plain).not.toContain("git ");
-    expect(plain).toMatch(/^~ bug-new-work.*….*completed-but {4,}model · high$/);
+    expect(plain).toMatch(/^~ bug-new-worktree…completed-but {4,}model · high$/);
   });
 
   it("independently middle-truncates distinct cwd and branch names under pressure", () => {
